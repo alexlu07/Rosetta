@@ -19,6 +19,7 @@ import collections
 
 from gtts import gTTS
 import speech_recognition as sr
+import Levenshtein
 
 from pygame._sdl2 import get_num_audio_devices, get_audio_device_name #Get playback device names
 import pygame
@@ -206,18 +207,16 @@ class RosettaBot:
 
     def solve_bar(self):
         skip = self.get_element("//div[@data-qa='skip']")
-        listening = False
+
+        text = None
         try:
+            text = self.get_element("//span[@data-qa='CueText-0']", w=self.swait).text
+        except:
             self.get_element("//span[contains(@data-qa, 'RSIcon-audioPause')]")
             print("LISTENING")
-            listening = True
-        except: 
-           print("text")
 
-        if listening:
             self.solve_listening_bar()
-
-        text = self.get_element("//span[@data-qa='CueText-0']", w=self.swait).text
+            return
 
         hide = self.get_element("//div[@data-qa='GlobalVisibilityButton']")
         hide.click()
@@ -235,6 +234,28 @@ class RosettaBot:
         return
 
     def solve_listening_bar(self):
+        text = self.listen()
+        print(text)
+
+        hide = self.get_element("//div[@data-qa='GlobalVisibilityButton']")
+        hide.click()
+
+        choices = self.get_element("//span[contains(@data-qa, 'ActText')]", multiple=True)
+        idx = [None, float("inf")]
+        for i, c in enumerate(choices):
+            dist = Levenshtein.distance(c.text, text)
+            print(dist, i, c.text)
+            if dist < idx[1]:
+                idx = [i+1, dist]
+        hide.click()
+
+        print(idx)
+        self.get_element(f"(//div[contains(@data-qa, 'ActComponent')])[{idx[0]}]").click()
+        time.sleep(1)
+
+        return
+
+    def listen(self):
         if LINUX:
             sink_inputs = subprocess.check_output("pactl list sink-inputs", shell=True).decode("utf-8")
             # print(sink_inputs)
@@ -291,12 +312,10 @@ class RosettaBot:
                 # print("a")
                 os.system(f"pactl move-source-output {output_id} {source}")
 
-        print(r.recognize_google(audio, language="es"))
+            for i, s in zip(input_id, sink):
+                os.system(f"pactl move-sink-input {i} {s}")
 
-        for i, s in zip(input_id, sink):
-            # print("b")
-            os.system(f"pactl move-sink-input {i} {s}")
-
+            return r.recognize_google(audio, language="es")
 
     def solve_topbar(self):
 
